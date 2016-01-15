@@ -13,6 +13,7 @@ import org.opencv.core.Mat;
 import org.opencv.core.MatOfByte;
 import org.opencv.core.MatOfFloat;
 import org.opencv.core.MatOfInt;
+import org.opencv.core.MatOfPoint;
 import org.opencv.core.Point;
 import org.opencv.core.Scalar;
 import org.opencv.core.Size;
@@ -161,6 +162,8 @@ public class ImageSegController
 					if (this.watershed.isSelected())
 					{
 						frame = this.doWatershed(frame);
+					} else if (this.meanshift.isSelected()){
+						frame = this.doMeanshift(frame);
 					}
 					// convert the Mat object (OpenCV) to Image (JavaFX)
 					imageToShow = mat2Image(frame);
@@ -221,6 +224,13 @@ public class ImageSegController
 		// init
 		Mat grayImage = new Mat();
 		Mat detectedEdges = new Mat();
+		ArrayList<MatOfPoint> contours = new ArrayList<MatOfPoint>();
+		Mat hierarchy = new Mat();
+		Mat imageSegment = new Mat();
+
+		// constants
+		int spatialRadius = 35;
+		int colorRadius = 60;
 
 		// convert to grayscale
 		Imgproc.cvtColor(frame, grayImage, Imgproc.COLOR_BGR2GRAY);
@@ -232,13 +242,19 @@ public class ImageSegController
 		Imgproc.Canny(detectedEdges, detectedEdges, this.threshold.getValue(), this.threshold.getValue() * 3);
 
 		// find contours
-//		Imgproc.findContours(image, contours, hierarchy, mode, method);
+		Imgproc.findContours(detectedEdges, contours, hierarchy, Imgproc.RETR_TREE, Imgproc.CHAIN_APPROX_SIMPLE);
 
-		// using watershed's output as a mask, display the result
-		Mat dest = new Mat();
-		frame.copyTo(dest, detectedEdges);
+		//draw contours
+		Mat drawing = Mat.zeros(detectedEdges.size(), CvType.CV_8UC3);
+		Imgproc.drawContours(drawing, contours, -1, new Scalar(0,255,0));
 
-		return dest;
+		//meanshift segmentation
+		Imgproc.pyrMeanShiftFiltering(frame, imageSegment, spatialRadius, colorRadius);
+
+		// add images
+		Core.add(imageSegment, drawing, imageSegment);
+
+		return imageSegment;
 	}
 
 	/**
@@ -251,11 +267,9 @@ public class ImageSegController
 		// enable the threshold slider
 		if (this.watershed.isSelected()){
 			this.threshold.setDisable(false);
-			this.meanshift.setDisable(true);
 		}
 		else
 			this.threshold.setDisable(true);
-
 		// now the capture can start
 		this.cameraButton.setDisable(false);
 	}
@@ -269,7 +283,6 @@ public class ImageSegController
 		// enable the threshold slider
 		if (this.meanshift.isSelected()){
 			this.threshold.setDisable(false);
-			this.watershed.setDisable(true);
 		}
 		else
 			this.threshold.setDisable(true);
