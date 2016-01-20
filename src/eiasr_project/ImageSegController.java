@@ -2,7 +2,6 @@ package eiasr_project;
 
 import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -11,8 +10,6 @@ import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfByte;
-import org.opencv.core.MatOfFloat;
-import org.opencv.core.MatOfInt;
 import org.opencv.core.MatOfPoint;
 import org.opencv.core.Point;
 import org.opencv.core.Scalar;
@@ -28,13 +25,6 @@ import javafx.scene.control.Slider;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 
-/**
- * The controller associated with the only view of our application. The
- * application logic is implemented here. It handles the button for
- * starting/stopping the camera, the acquired video stream, the relative
- * controls and the image segmentation process.
- *
- */
 public class ImageSegController
 {
 
@@ -137,9 +127,7 @@ public class ImageSegController
 	}
 
 	/**
-	 * Get a frame from the opened video stream (if any)
-	 *
-	 * @return the {@link Image} to show
+	 * Get a frame from the opened video stream
 	 */
 	private Image grabFrame()
 	{
@@ -192,24 +180,30 @@ public class ImageSegController
 	 */
 	private Mat doWatershed(Mat frame)
 	{
-		// init
-		Mat grayImage = new Mat();
-		Mat detectedEdges = new Mat();
+		//init
+		Mat image = frame;
+		Mat gray = new Mat();
+		Mat bin = new Mat();
 
-		// convert to grayscale
-		Imgproc.cvtColor(frame, grayImage, Imgproc.COLOR_BGR2GRAY);
+		//convert to gray scale and make threshold operation controled by slider
+		Imgproc.cvtColor(frame, gray, Imgproc.COLOR_BGR2GRAY);
+		Imgproc.threshold(gray, bin, this.threshold.getValue()*2, 255, Imgproc.THRESH_BINARY);
 
-		// reduce noise with a 3x3 kernel
-		Imgproc.blur(grayImage, detectedEdges, new Size(3, 3));
+		//init vars for find contours operation
+		ArrayList<MatOfPoint> contours = new ArrayList<MatOfPoint>();
+		Mat hierarchy = new Mat();
 
-		// watershed detector, with ratio of lower:upper threshold of 3:1
-		Imgproc.Canny(detectedEdges, detectedEdges, this.threshold.getValue(), this.threshold.getValue() * 3);
+		//detect contours
+		Imgproc.findContours(bin, contours, hierarchy, Imgproc.RETR_TREE, Imgproc.CHAIN_APPROX_SIMPLE);
 
-		// using watershed's output as a mask, display the result
-		Mat dest = new Mat();
-		frame.copyTo(dest, detectedEdges);
+		//draw contours as markers for watershed segmentation
+		Mat markers = new Mat(image.size(), CvType.CV_32SC1);
+		Imgproc.drawContours(markers, contours, -1, new Scalar(255), 1, 8, hierarchy, 1, new Point(0,0));
 
-		return dest;
+		//watershed segmentation
+		Imgproc.watershed(image, markers);
+
+		return markers;
 	}
 
 	/**
@@ -238,7 +232,7 @@ public class ImageSegController
 		// reduce noise with a 3x3 kernel
 		Imgproc.blur(grayImage, detectedEdges, new Size(3, 3));
 
-		// watershed detector, with ratio of lower:upper threshold of 3:1
+		// Canny detector, with ratio of lower:upper threshold of 3:1
 		Imgproc.Canny(detectedEdges, detectedEdges, this.threshold.getValue(), this.threshold.getValue() * 3);
 
 		// find contours
@@ -251,7 +245,7 @@ public class ImageSegController
 		//meanshift segmentation
 		Imgproc.pyrMeanShiftFiltering(frame, imageSegment, spatialRadius, colorRadius);
 
-		// add images
+		// add images (contours and image after meanShift segmenting)
 		Core.add(imageSegment, drawing, imageSegment);
 
 		return imageSegment;
@@ -293,10 +287,6 @@ public class ImageSegController
 
 	/**
 	 * Convert a Mat object (OpenCV) in the corresponding Image for JavaFX
-	 *
-	 * @param frame
-	 *            the {@link Mat} representing the current frame
-	 * @return the {@link Image} to show
 	 */
 	private Image mat2Image(Mat frame)
 	{
